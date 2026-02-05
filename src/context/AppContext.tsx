@@ -1,28 +1,59 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+
+// Get the correct API URL based on platform
+const getApiBaseUrl = () => {
+  // Using physical device with computer's IP address
+  return "http://192.168.1.48:8080";
+  
+  // For Android emulator, use 10.0.2.2 instead of localhost
+  // if (Platform.OS === "android") {
+  //   return "http://10.0.2.2:8080";
+  // }
+  // For iOS simulator and web, localhost works fine
+  // return "http://localhost:8080";
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface College {
   id: string;
   name: string;
-  nickname: string;
+  nickname?: string;
   lat: number;
   lng: number;
+  address?: string;
 }
 
 export interface Listing {
   id: string;
-  owner_id: string;
-  college_id: string;
+  owner_id?: string;
+  college_id?: string;
   rent_price: number;
   gender_type: "boys" | "girls" | "co-ed";
   housing_type: "pg" | "flat";
   lat: number;
   lng: number;
-  status: "active" | "inactive";
+  status: "active" | "inactive" | "approved";
   title: string;
   images: string[];
-  owner_phone: string;
-  owner_name: string;
+  owner_phone?: string;
+  owner_name?: string;
   distance?: number;
+  electricityMode?: string;
+  electricityFee?: number;
+  rating?: number;
+  reviews?: Array<{
+    id: number;
+    userId: string;
+    userName: string;
+    reviewText: string;
+    rating: number;
+    createdAt: string;
+  }>;
+  liked?: boolean;
 }
 
 export interface Amenity {
@@ -36,12 +67,20 @@ interface AppContextType {
   setSelectedCollege: (college: College | null) => void;
   colleges: College[];
   listings: Listing[];
+  fetchedCribs: Listing[];
+  userLocation: { latitude: number; longitude: number } | null;
   amenities: Amenity[];
   user: { id: string; phone: string; role: string } | null;
   setUser: (user: { id: string; phone: string; role: string } | null) => void;
   getListingsByCollege: (collegeId: string) => Listing[];
+  fetchCribsByCollege: (collegeName: string) => Promise<Listing[]>;
+  fetchCribsByLocation: (latitude: number, longitude: number) => Promise<Listing[]>;
   getAmenitiesByListing: (listingId: string) => Amenity[];
   getListingById: (id: string) => Listing | undefined;
+  updateListingReviews: (listingId: string, newReview: any) => void;
+  addToFetchedCribs: (newListings: Listing[]) => void;
+  isLoadingColleges: boolean;
+  collegesError: string | null;
 }
 
 const mockColleges: College[] = [
@@ -172,6 +211,90 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
   const [user, setUser] = useState<{ id: string; phone: string; role: string } | null>(null);
+  const [colleges, setColleges] = useState<College[]>(mockColleges);
+  const [isLoadingColleges, setIsLoadingColleges] = useState<boolean>(false);
+  const [collegesError, setCollegesError] = useState<string | null>(null);
+  const [fetchedCribs, setFetchedCribs] = useState<Listing[]>([]);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Load user data from AsyncStorage on app initialization
+  useEffect(() => {
+    const loadUserFromStorage = async () => {
+      try {
+        const userInfoStr = await AsyncStorage.getItem('userInfo');
+        if (userInfoStr) {
+          const userInfo = JSON.parse(userInfoStr);
+          setUser({
+            id: userInfo.userId || userInfo.id,
+            phone: userInfo.userId || userInfo.phone,
+            role: userInfo.role,
+          });
+          console.log('✅ User loaded from storage:', userInfo.name, userInfo.role);
+        }
+      } catch (error) {
+        console.error('Error loading user from storage:', error);
+      }
+    };
+
+    loadUserFromStorage();
+  }, []);
+
+  // Fetch colleges from backend
+  useEffect(() => {
+    const fetchColleges = async () => {
+      setIsLoadingColleges(true);
+      setCollegesError(null);
+      
+      const apiUrl = `${API_BASE_URL}/colleges`;
+      console.log(`🔍 Attempting to fetch colleges from: ${apiUrl}`);
+      console.log(`📱 Platform: ${Platform.OS}`);
+      
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log(`✅ Successfully fetched ${data.length} colleges`);
+        
+        // Map backend response to our College interface
+        const mappedColleges: College[] = data.map((college: any) => ({
+          id: college.id.toString(),
+          name: college.name,
+          nickname: college.name, // Use name as nickname if not provided
+          lat: college.latitude,
+          lng: college.longitude,
+          address: college.address,
+        }));
+        
+        setColleges(mappedColleges);
+      } catch (error) {
+        console.error('❌ Error fetching colleges:', error);
+        console.log('💡 Troubleshooting tips:');
+        console.log('  1. Make sure your backend server is running on port 8080');
+        console.log('  2. If using a physical device, update API_BASE_URL with your computer\'s IP address');
+        console.log(`  3. Current API URL: ${apiUrl}`);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch colleges';
+        setCollegesError(errorMessage);
+        // Keep using mock data if fetch fails
+        setColleges(mockColleges);
+        console.log('📋 Using mock data as fallback');
+      } finally {
+        setIsLoadingColleges(false);
+      }
+    };
+
+    fetchColleges();
+  }, []);
 
   const haversineDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371;
@@ -188,7 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const getListingsByCollege = (collegeId: string): Listing[] => {
-    const college = mockColleges.find((c) => c.id === collegeId);
+    const college = colleges.find((c) => c.id === collegeId);
     if (!college) return [];
 
     return mockListings
@@ -200,12 +323,172 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => (a.distance || 0) - (b.distance || 0));
   };
 
+  const fetchCribsByCollege = async (collegeName: string): Promise<Listing[]> => {
+    const apiUrl = `${API_BASE_URL}/cribs/search/nearby?collegeName=${encodeURIComponent(collegeName)}`;
+    console.log(`🔍 Fetching cribs for college: ${collegeName}`);
+    console.log(`📍 API URL: ${apiUrl}`);
+
+    try {
+      // Get auth token (even if user is not logged in - can be null)
+      const token = await SecureStore.getItemAsync('authToken');
+      const tokenType = await SecureStore.getItemAsync('tokenType');
+      
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
+      
+      // Add Authorization header even if token is null
+      if (token && tokenType) {
+        headers['Authorization'] = `${tokenType} ${token}`;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`✅ Successfully fetched ${data.length} cribs`);
+
+      // Map backend response to our Listing interface
+      const mappedListings: Listing[] = data.map((crib: any) => ({
+        id: crib.id.toString(),
+        title: crib.name,
+        lat: crib.latitude,
+        lng: crib.longitude,
+        gender_type: crib.gender.toLowerCase() as "boys" | "girls" | "co-ed",
+        housing_type: crib.buildingType.toLowerCase() as "pg" | "flat",
+        status: crib.status.toLowerCase() as "active" | "inactive" | "approved",
+        rent_price: crib.price,
+        images: crib.mediaUrls || [],
+        distance: crib.distanceInKm,
+        electricityMode: crib.electricityMode,
+        electricityFee: crib.electricityFee,
+        rating: crib.rating,
+        reviews: crib.reviews,
+        owner_name: crib.ownerName,
+        owner_phone: crib.ownerPhoneNumber,
+        liked: crib.liked || false,
+      }));
+
+      // Store fetched cribs in context state
+      setFetchedCribs(mappedListings);
+      return mappedListings;
+    } catch (error) {
+      console.error('❌ Error fetching cribs:', error);
+      console.log('📋 Using mock data as fallback');
+      // Return empty array on error
+      return [];
+    }
+  };
+
+  const fetchCribsByLocation = async (latitude: number, longitude: number): Promise<Listing[]> => {
+    const apiUrl = `${API_BASE_URL}/cribs/search/explore?latitude=${latitude}&longitude=${longitude}`;
+    console.log(`🔍 Fetching cribs near location: ${latitude}, ${longitude}`);
+    console.log(`📍 API URL: ${apiUrl}`);
+
+    try {
+      // Get auth token (even if user is not logged in - can be null)
+      const token = await SecureStore.getItemAsync('authToken');
+      const tokenType = await SecureStore.getItemAsync('tokenType');
+      
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
+      
+      // Add Authorization header even if token is null
+      if (token && tokenType) {
+        headers['Authorization'] = `${tokenType} ${token}`;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`✅ Successfully fetched ${data.length} cribs near your location`);
+
+      // Map backend response to our Listing interface
+      const mappedListings: Listing[] = data.map((crib: any) => ({
+        id: crib.id.toString(),
+        title: crib.name,
+        lat: crib.latitude,
+        lng: crib.longitude,
+        gender_type: crib.gender.toLowerCase() as "boys" | "girls" | "co-ed",
+        housing_type: crib.buildingType.toLowerCase() as "pg" | "flat",
+        status: crib.status.toLowerCase() as "active" | "inactive" | "approved",
+        rent_price: crib.price,
+        images: crib.mediaUrls || [],
+        distance: crib.distanceInKm,
+        electricityMode: crib.electricityMode,
+        electricityFee: crib.electricityFee,
+        rating: crib.rating,
+        reviews: crib.reviews,
+        owner_name: crib.ownerName,
+        owner_phone: crib.ownerPhoneNumber,
+        liked: crib.liked || false,
+      }));
+
+      // Store the actual user location and fetched cribs
+      setUserLocation({ latitude, longitude });
+      setFetchedCribs(mappedListings);
+      return mappedListings;
+    } catch (error) {
+      console.error('❌ Error fetching cribs by location:', error);
+      throw error; // Re-throw to handle in UI
+    }
+  };
+
   const getAmenitiesByListing = (listingId: string): Amenity[] => {
     return mockAmenities.filter((a) => a.listing_id === listingId);
   };
 
   const getListingById = (id: string): Listing | undefined => {
+    // First check in fetched cribs from backend
+    const fetchedListing = fetchedCribs.find((l) => l.id === id);
+    if (fetchedListing) return fetchedListing;
+    
+    // Fallback to mock listings
     return mockListings.find((l) => l.id === id);
+  };
+
+  const updateListingReviews = (listingId: string, newReview: any) => {
+    setFetchedCribs((prevCribs) => 
+      prevCribs.map((listing) => {
+        if (listing.id === listingId) {
+          const updatedReviews = listing.reviews ? [newReview, ...listing.reviews] : [newReview];
+          const avgRating = updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length;
+          return {
+            ...listing,
+            reviews: updatedReviews,
+            rating: avgRating,
+          };
+        }
+        return listing;
+      })
+    );
+  };
+
+  const addToFetchedCribs = (newListings: Listing[]) => {
+    setFetchedCribs((prevCribs) => {
+      // Create a map of existing cribs by ID for quick lookup
+      const existingIds = new Set(prevCribs.map(c => c.id));
+      // Add only new listings that don't already exist
+      const uniqueNewListings = newListings.filter(l => !existingIds.has(l.id));
+      // Merge with existing cribs
+      return [...prevCribs, ...uniqueNewListings];
+    });
   };
 
   return (
@@ -213,14 +496,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         selectedCollege,
         setSelectedCollege,
-        colleges: mockColleges,
+        colleges,
         listings: mockListings,
+        fetchedCribs,
+        userLocation,
         amenities: mockAmenities,
         user,
         setUser,
         getListingsByCollege,
+        fetchCribsByCollege,
+        fetchCribsByLocation,
         getAmenitiesByListing,
         getListingById,
+        updateListingReviews,
+        addToFetchedCribs,
+        isLoadingColleges,
+        collegesError,
       }}
     >
       {children}

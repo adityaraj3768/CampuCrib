@@ -1,6 +1,6 @@
-import React from "react";
-import { View, Text, Image, TouchableOpacity, Dimensions } from "react-native";
-import { MapPin } from "lucide-react-native";
+import React, { useRef } from "react";
+import { View, Text, Image, TouchableOpacity, Dimensions, Animated } from "react-native";
+import { MapPin, Star, Heart } from "lucide-react-native";
 
 interface ListingCardProps {
   id: string;
@@ -8,9 +8,13 @@ interface ListingCardProps {
   price: number;
   genderType: "boys" | "girls" | "co-ed";
   housingType: "pg" | "flat";
-  image: string;
+  image: string; // Can be Cloudinary URL or any image URL
   distance?: number;
+  rating?: number;
+  liked?: boolean;
   onPress: () => void;
+  onLikePress?: () => void;
+  isVertical?: boolean;
 }
 
 const { width } = Dimensions.get("window");
@@ -23,7 +27,11 @@ export function ListingCard({
   housingType,
   image,
   distance,
+  rating,
+  liked = false,
   onPress,
+  onLikePress,
+  isVertical = false,
 }: ListingCardProps) {
   const genderColors = {
     boys: "bg-blue-400",
@@ -37,83 +45,136 @@ export function ListingCard({
     "co-ed": "👥",
   };
 
+  const cardWidth = isVertical ? width - 32 : CARD_WIDTH;
+  const imageHeight = isVertical ? 200 : CARD_WIDTH * 0.9;
+
+  // Animation for heart icon
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const animateHeart = () => {
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 1.4,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.9}
-      className="mr-4"
-      style={{ width: CARD_WIDTH }}
+      className={isVertical ? "mb-3" : "mr-4"}
+      style={{ width: cardWidth }}
     >
       <View
-        className="bg-cosmic border-2 border-brutal rounded-squircle overflow-hidden"
+        className="bg-white rounded-xl overflow-hidden"
         style={{
-          shadowColor: "#1A1A1A",
-          shadowOffset: { width: 4, height: 4 },
-          shadowOpacity: 1,
-          shadowRadius: 0,
-          elevation: 5,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          elevation: 3,
         }}
       >
-        {/* Image Container - 80% */}
-        <View className="relative" style={{ height: CARD_WIDTH * 0.9 }}>
+        {/* Image Container */}
+        <View className="relative" style={{ height: imageHeight }}>
           <Image
             source={{ uri: image }}
             className="w-full h-full"
             resizeMode="cover"
           />
 
-          {/* Price Sticker */}
+          {/* Price Badge */}
           <View
-            className="absolute top-3 right-3 bg-lime border-2 border-brutal px-3 py-1 rounded-lg"
+            className="absolute top-3 right-3 bg-white/95 px-3 py-1.5 rounded-lg"
             style={{
-              shadowColor: "#1A1A1A",
-              shadowOffset: { width: 2, height: 2 },
-              shadowOpacity: 1,
-              shadowRadius: 0,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
             }}
           >
-            <Text className="font-grotesk text-brutal text-lg">
+            <Text className="font-grotesk text-gray-900 text-base font-semibold">
               ₹{price.toLocaleString()}
             </Text>
-            <Text className="font-mono text-brutal text-xs">/month</Text>
+            <Text className="font-grotesk text-gray-500 text-xs">/month</Text>
           </View>
 
-          {/* Gender Tag */}
-          <View
-            className={`absolute top-3 left-3 ${genderColors[genderType]} border-2 border-brutal px-2 py-1 rounded-lg flex-row items-center`}
-          >
-            <Text className="mr-1">{genderEmoji[genderType]}</Text>
-            <Text className="font-mono text-brutal text-xs uppercase font-bold">
-              {genderType}
-            </Text>
-          </View>
-
-          {/* Housing Type */}
-          <View className="absolute bottom-3 left-3 bg-brutal px-3 py-1 rounded-lg">
-            <Text className="font-mono text-cosmic text-xs uppercase font-bold">
+          {/* Housing Type Badge */}
+          <View className="absolute top-3 left-3 bg-blue-500 px-2.5 py-1 rounded-lg">
+            <Text className="font-grotesk text-white text-xs font-medium uppercase">
               {housingType}
             </Text>
           </View>
         </View>
 
-        {/* Info Section - 20% */}
-        <View className="p-3 border-t-2 border-brutal">
+        {/* Info Section */}
+        <View className="p-3">
           <Text
-            className="font-grotesk text-brutal text-base"
+            className="font-grotesk text-gray-900 text-base font-medium mb-1"
             numberOfLines={1}
           >
             {title}
           </Text>
-          {distance !== undefined && (
-            <View className="flex-row items-center mt-1">
-              <MapPin size={14} color="#FF4D00" />
-              <Text className="font-mono text-brutal text-xs ml-1">
-                {distance < 1
-                  ? `${(distance * 1000).toFixed(0)}m away`
-                  : `${distance.toFixed(1)}km away`}
+          
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
+              <Text className="font-grotesk text-gray-600 text-sm capitalize mr-2">
+                For {genderType}
               </Text>
+              
+              {distance !== undefined && (
+                <View className="flex-row items-center">
+                  <MapPin size={12} color="#EF4444" />
+                  <Text className="font-grotesk text-red-500 text-xs ml-1 font-semibold">
+                    {distance < 1
+                      ? `${(distance * 1000).toFixed(0)}m`
+                      : `${distance.toFixed(1)}km`}
+                  </Text>
+                </View>
+              )}
             </View>
-          )}
+            
+            <View className="flex-row items-center gap-2">
+              {rating !== undefined && rating > 0 && (
+                <View className="flex-row items-center bg-yellow-50 px-2 py-1 rounded-lg">
+                  <Star size={14} color="#FBBF24" fill="#FBBF24" />
+                  <Text className="font-grotesk text-gray-900 text-sm ml-1 font-bold">
+                    {rating.toFixed(1)}
+                  </Text>
+                </View>
+              )}
+              
+              {onLikePress && (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    console.log('❤️ Heart button tapped in ListingCard');
+                    e.stopPropagation();
+                    animateHeart();
+                    onLikePress();
+                  }}
+                  className="bg-gray-50 p-2 rounded-lg active:bg-gray-100"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                    <Heart
+                      size={18}
+                      color={liked ? "#EF4444" : "#9CA3AF"}
+                      fill={liked ? "#EF4444" : "transparent"}
+                      strokeWidth={2}
+                    />
+                  </Animated.View>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
