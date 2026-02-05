@@ -225,13 +225,15 @@ export default function PostListingScreen() {
       }
 
       const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.Highest,
       });
 
       const coords = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       };
+
+      console.log('Full precision coordinates:', coords);
 
       setSelectedLocation(coords);
       setFormData((prev) => ({
@@ -657,7 +659,7 @@ const handleTakePhoto = async () => {
                     Location Set
                   </Text>
                   <Text className="font-grotesk text-emerald-700 text-xs">
-                    Lat: {selectedLocation.latitude.toFixed(6)}, Lng: {selectedLocation.longitude.toFixed(6)}
+                    Lat: {selectedLocation.latitude} | Lng: {selectedLocation.longitude}
                   </Text>
                 </View>
               </View>
