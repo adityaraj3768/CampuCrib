@@ -9,6 +9,7 @@ import {
   Platform,
   Modal,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
@@ -64,7 +65,7 @@ const CustomMarker = ({
     >
       <View 
         style={{ 
-          padding: 6, 
+          padding: 4, 
           backgroundColor: 'transparent',
           alignItems: 'center',
         }} 
@@ -72,20 +73,36 @@ const CustomMarker = ({
       >
         {/* Price Callout Box */}
         <View
-          className="bg-blue-500 rounded-lg px-2.5 py-1.5"
           style={{
-            borderWidth: 1,
-            borderColor: "#3B82F6",
+            backgroundColor: '#3B82F6',
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderWidth: 2,
+            borderColor: '#3B82F6',
             elevation: 4,
-            shadowColor: "#3B82F6",
+            shadowColor: '#3B82F6',
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.25,
             shadowRadius: 4,
-            minWidth: 50,
+            minWidth: 70,
+            maxWidth: 100,
             alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          <Text className="font-grotesk text-white text-xs font-semibold">{price}</Text>
+          <Text 
+            style={{
+              color: '#FFFFFF',
+              fontSize: 13,
+              fontWeight: '600',
+              textAlign: 'center',
+            }}
+            numberOfLines={1}
+            ellipsizeMode="clip"
+          >
+            {price}
+          </Text>
         </View>
         
         {/* Tail/Pointer */}
@@ -129,6 +146,7 @@ export default function SearchScreen() {
     fetchCribsByCollege,
     fetchedCribs,
     userLocation,
+    user,
   } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -136,6 +154,7 @@ export default function SearchScreen() {
   const [showMapButton, setShowMapButton] = useState(false);
   const [isLoadingCribs, setIsLoadingCribs] = useState(false);
   const [isScrollEnabled, setIsScrollEnabled] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const mapRef = useRef<MapView>(null);
   const fullScreenMapRef = useRef<MapView>(null);
@@ -144,6 +163,27 @@ export default function SearchScreen() {
   const handleScroll = (event: any) => {
     const scrollY = event.nativeEvent.contentOffset.y;
     setShowMapButton(scrollY > MAP_HEIGHT - 50);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      if (selectedCollege) {
+        // Refresh cribs for selected college
+        const fetchedCribs = await fetchCribsByCollege(selectedCollege.name);
+        if (fetchedCribs.length > 0) {
+          setListings(fetchedCribs);
+        } else {
+          const collegeListings = getListingsByCollege(selectedCollege.id);
+          setListings(collegeListings);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing cribs:', error);
+      Alert.alert('Error', 'Failed to refresh properties. Please try again.');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -194,13 +234,6 @@ export default function SearchScreen() {
 
     loadCribs();
   }, [selectedCollege?.id]); // Only re-run when college ID changes
-
-  // Update listings when fetchedCribs changes (e.g., when reviews are added)
-  useEffect(() => {
-    if (fetchedCribs.length > 0) {
-      setListings(fetchedCribs);
-    }
-  }, [fetchedCribs]);
 
   // Auto-zoom map to show all cribs
   useEffect(() => {
@@ -395,6 +428,14 @@ export default function SearchScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         scrollEnabled={isScrollEnabled}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={["#3B82F6"]}
+            tintColor="#3B82F6"
+          />
+        }
         ListHeaderComponent={
           <>
             <View 
@@ -509,7 +550,7 @@ export default function SearchScreen() {
               rating={listing.rating}
               liked={listing.liked}
               onPress={() => handleListingPress(listing)}
-              onLikePress={() => handleLikePress(listing.id, listing.liked || false)}
+              onLikePress={user && user.role?.toUpperCase() === 'STUDENT' ? () => handleLikePress(listing.id, listing.liked || false) : undefined}
               isVertical
             />
           </View>
@@ -533,7 +574,7 @@ export default function SearchScreen() {
 
       {/* Full Screen Modal */}
       <Modal visible={isMapFullScreen} animationType="slide" onRequestClose={() => setIsMapFullScreen(false)}>
-        <SafeAreaView className="flex-1 bg-white">
+        <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
           <View className="px-4 py-3 flex-row items-center justify-between border-b border-gray-200 bg-white" style={{ zIndex: 100 }}>
             <TouchableOpacity
               onPress={() => setIsMapFullScreen(false)}
@@ -571,9 +612,14 @@ export default function SearchScreen() {
               scrollEnabled={true}
               rotateEnabled={true}
               onMapReady={() => {
-                 if (selectedCollege && listings.length > 0) {
+                 if (listings.length > 0) {
                     const allCoords = [
-                        { latitude: selectedCollege.lat, longitude: selectedCollege.lng },
+                        ...(selectedCollege 
+                          ? [{ latitude: selectedCollege.lat, longitude: selectedCollege.lng }]
+                          : userLocation 
+                            ? [userLocation]
+                            : []
+                        ),
                         ...listings.map(l => ({ latitude: l.lat, longitude: l.lng }))
                     ];
                     fullScreenMapRef.current?.fitToCoordinates(allCoords, {
@@ -583,7 +629,7 @@ export default function SearchScreen() {
                  }
               }}
             >
-              {selectedCollege && (
+              {selectedCollege ? (
                 <Marker
                   coordinate={{ latitude: selectedCollege.lat, longitude: selectedCollege.lng }}
                   title={selectedCollege.nickname}
@@ -593,6 +639,19 @@ export default function SearchScreen() {
                   <View style={{ padding: 4 }} collapsable={false}>
                     <View className="bg-blue-500 rounded-full p-2" style={{ borderWidth: 2, borderColor: "#FFFFFF", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }}>
                       <Text style={{ fontSize: 18 }}>🎓</Text>
+                    </View>
+                  </View>
+                </Marker>
+              ) : userLocation && (
+                <Marker
+                  coordinate={userLocation}
+                  title="Your Location"
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={Platform.OS === "android"}
+                >
+                  <View style={{ padding: 2 }} collapsable={false}>
+                    <View className="bg-blue-500 rounded-full p-1" style={{ borderWidth: 2, borderColor: "#FFFFFF", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }}>
+                      <Text style={{ fontSize: 12 }}>📍</Text>
                     </View>
                   </View>
                 </Marker>

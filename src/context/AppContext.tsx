@@ -81,6 +81,7 @@ interface AppContextType {
   addToFetchedCribs: (newListings: Listing[]) => void;
   isLoadingColleges: boolean;
   collegesError: string | null;
+  fetchColleges: () => Promise<void>;
 }
 
 const mockColleges: College[] = [
@@ -240,59 +241,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Fetch colleges from backend
-  useEffect(() => {
-    const fetchColleges = async () => {
-      setIsLoadingColleges(true);
-      setCollegesError(null);
+  const fetchColleges = async () => {
+    setIsLoadingColleges(true);
+    setCollegesError(null);
+    
+    const apiUrl = `${API_BASE_URL}/colleges`;
+    console.log(`🔍 Attempting to fetch colleges from: ${apiUrl}`);
+    console.log(`📱 Platform: ${Platform.OS}`);
+    
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
       
-      const apiUrl = `${API_BASE_URL}/colleges`;
-      console.log(`🔍 Attempting to fetch colleges from: ${apiUrl}`);
-      console.log(`📱 Platform: ${Platform.OS}`);
-      
-      try {
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log(`✅ Successfully fetched ${data.length} colleges`);
-        
-        // Map backend response to our College interface
-        const mappedColleges: College[] = data.map((college: any) => ({
-          id: college.id.toString(),
-          name: college.name,
-          nickname: college.name, // Use name as nickname if not provided
-          lat: college.latitude,
-          lng: college.longitude,
-          address: college.address,
-        }));
-        
-        setColleges(mappedColleges);
-      } catch (error) {
-        console.error('❌ Error fetching colleges:', error);
-        console.log('💡 Troubleshooting tips:');
-        console.log('  1. Make sure your backend server is running on port 8080');
-        console.log('  2. If using a physical device, update API_BASE_URL with your computer\'s IP address');
-        console.log(`  3. Current API URL: ${apiUrl}`);
-        
-        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch colleges';
-        setCollegesError(errorMessage);
-        // Keep using mock data if fetch fails
-        setColleges(mockColleges);
-        console.log('📋 Using mock data as fallback');
-      } finally {
-        setIsLoadingColleges(false);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
+      
+      const data = await response.json();
+      console.log(`✅ Successfully fetched ${data.length} colleges`);
+      
+      // Map backend response to our College interface
+      const mappedColleges: College[] = data.map((college: any) => ({
+        id: college.id.toString(),
+        name: college.name,
+        nickname: college.name, // Use name as nickname if not provided
+        lat: college.latitude,
+        lng: college.longitude,
+        address: college.address,
+      }));
+      
+      setColleges(mappedColleges);
+    } catch (error) {
+      console.error('❌ Error fetching colleges:', error);
+      console.log('💡 Troubleshooting tips:');
+      console.log('  1. Make sure your backend server is running on port 8080');
+      console.log('  2. If using a physical device, update API_BASE_URL with your computer\'s IP address');
+      console.log(`  3. Current API URL: ${apiUrl}`);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch colleges';
+      setCollegesError(errorMessage);
+      // Keep using mock data if fetch fails
+      setColleges(mockColleges);
+      console.log('📋 Using mock data as fallback');
+    } finally {
+      setIsLoadingColleges(false);
+    }
+  };
 
+  useEffect(() => {
     fetchColleges();
   }, []);
 
@@ -512,6 +513,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addToFetchedCribs,
         isLoadingColleges,
         collegesError,
+        fetchColleges,
       }}
     >
       {children}

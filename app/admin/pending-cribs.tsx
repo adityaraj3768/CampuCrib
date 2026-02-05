@@ -266,17 +266,21 @@ export default function PendingCribsScreen() {
         ) : (
           <View className="px-4 py-4">
             {cribs.map((crib) => (
-              <View
+              <TouchableOpacity
                 key={crib.id}
-                className="bg-white border border-gray-200 rounded-xl mb-4 overflow-hidden"
-                style={{
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.08,
-                  shadowRadius: 6,
-                  elevation: 3,
-                }}
+                onPress={() => router.push(`/listing/${crib.id}`)}
+                activeOpacity={0.7}
               >
+                <View
+                  className="bg-white border border-gray-200 rounded-xl mb-4 overflow-hidden"
+                  style={{
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 6,
+                    elevation: 3,
+                  }}
+                >
                 {/* Image */}
                 <Image
                   source={{ uri: crib.mediaUrls[0] || 'https://placehold.co/600x400/jpg' }}
@@ -379,8 +383,7 @@ export default function PendingCribsScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
-              </View>
-            ))}
+              </View>              </TouchableOpacity>            ))}
           </View>
         )}
       </ScrollView>

@@ -12,6 +12,7 @@ import {
   Dimensions,
   Alert,
   Easing,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Search, MapPin, Sparkles, Key, Home } from "lucide-react-native";
@@ -25,13 +26,14 @@ const FOOTER_HEIGHT = 64;
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { colleges, setSelectedCollege, isLoadingColleges, collegesError, fetchCribsByLocation } = useApp();
+  const { colleges, setSelectedCollege, isLoadingColleges, collegesError, fetchCribsByLocation, fetchColleges } = useApp();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [filteredColleges, setFilteredColleges] = useState(colleges);
   const [isExploring, setIsExploring] = useState(false);
   const [buttonHovered, setButtonHovered] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Animations
   const titleOpacity = useRef(new Animated.Value(0)).current;
@@ -192,6 +194,17 @@ export default function OnboardingScreen() {
     setSelectedCollege(college);
     Keyboard.dismiss();
     router.push("/search");
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchColleges();
+    } catch (error) {
+      console.error('Error refreshing colleges:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleExplorePress = async () => {
@@ -405,6 +418,14 @@ export default function OnboardingScreen() {
                 keyExtractor={(item) => item.id}
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={{ paddingBottom: 16 }}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
+                    colors={["#3B82F6"]}
+                    tintColor="#3B82F6"
+                  />
+                }
                 renderItem={({ item, index }) => (
                   <TouchableOpacity
                     onPress={() => handleCollegeSelect(item)}

@@ -16,6 +16,10 @@ import {
   KeyboardAvoidingView,
   Alert,
   Keyboard,
+  FlatList,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -68,10 +72,70 @@ export default function ListingDetailScreen() {
   const [hasUserReviewed, setHasUserReviewed] = useState(false);
   const [localReviews, setLocalReviews] = useState<any[]>([]);
   const [reviewInputY, setReviewInputY] = useState(0);
+  const [isLoadingListing, setIsLoadingListing] = useState(false);
+  const [fetchedListing, setFetchedListing] = useState<any>(null);
   const imageOpacity = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
+  const expandedFlatListRef = useRef<FlatList>(null);
 
-  const listing = getListingById(id || "");
+  const listing = getListingById(id || "") || fetchedListing;
+
+  // Fetch listing from backend if not found in context (e.g., pending cribs for admin)
+  useEffect(() => {
+    const fetchListingFromBackend = async () => {
+      if (!getListingById(id || "") && id) {
+        setIsLoadingListing(true);
+        try {
+          const token = await SecureStore.getItemAsync('authToken');
+          const response = await fetch(`${API_BASE_URL}/cribs/${id}`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            // Transform backend data to match Listing interface
+            setFetchedListing({
+              id: data.id.toString(),
+              title: data.name,
+              rent_price: data.price,
+              housing_type: data.buildingType,
+              gender_type: data.gender,
+              images: data.mediaUrls || [],
+              lat: data.latitude,
+              lng: data.longitude,
+              owner_phone: data.ownerPhoneNumber,
+              owner_name: data.ownerName,
+              rating: data.rating || 0,
+              reviews: data.reviews || [],
+              distance: data.distanceInKm,
+              status: data.status,
+              electricity_mode: data.electricityMode,
+              electricity_fee: data.electricityFee,
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching listing:', error);
+        } finally {
+          setIsLoadingListing(false);
+        }
+      }
+    };
+
+    fetchListingFromBackend();
+  }, [id]);
+
+  // Scroll to current image when expanded modal opens
+  useEffect(() => {
+    if (expandedImageIndex !== null && expandedFlatListRef.current) {
+      setTimeout(() => {
+        expandedFlatListRef.current?.scrollToIndex({
+          index: expandedImageIndex,
+          animated: false,
+        });
+      }, 100);
+    }
+  }, [expandedImageIndex]);
 
   // Initialize local reviews with listing reviews
   useEffect(() => {
@@ -134,6 +198,17 @@ export default function ListingDetailScreen() {
     checkIfUserReviewed();
   }, [localReviews, user]);
 
+  if (isLoadingListing) {
+    return (
+      <SafeAreaView className="flex-1 bg-white items-center justify-center">
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text className="font-grotesk text-gray-600 text-base mt-4">
+          Loading listing details...
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   if (!listing) {
     return (
       <SafeAreaView className="flex-1 bg-cosmic items-center justify-center">
@@ -150,32 +225,41 @@ export default function ListingDetailScreen() {
     );
   }
 
-  const handleImageTap = (event: any) => {
-    const tapX = event.nativeEvent.locationX;
-    const isRightSide = tapX > width / 2;
-
-    if (isRightSide && currentImageIndex < listing.images.length - 1) {
-      animateImageTransition(() => setCurrentImageIndex((prev) => prev + 1));
-    } else if (!isRightSide && currentImageIndex > 0) {
-      animateImageTransition(() => setCurrentImageIndex((prev) => prev - 1));
-    }
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / width);
+    setCurrentImageIndex(index);
   };
 
-  const animateImageTransition = (callback: () => void) => {
-    Animated.sequence([
-      Animated.timing(imageOpacity, {
-        toValue: 0.5,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(imageOpacity, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    callback();
+  const handleExpandedScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / width);
+    setExpandedImageIndex(index);
   };
+
+  const renderExpandedImageItem = ({ item }: { item: string }) => (
+    <View style={{ width, justifyContent: 'center', alignItems: 'center' }}>
+      <Image
+        source={{ uri: item }}
+        style={{ width: width - 32, height: height * 0.7 }}
+        resizeMode="contain"
+      />
+    </View>
+  );
+
+  const renderImageItem = ({ item, index }: { item: string; index: number }) => (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={() => setExpandedImageIndex(index)}
+      style={{ width, height: height * 0.4 }}
+    >
+      <Image
+        source={{ uri: item }}
+        style={{ width, height: height * 0.4 }}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+  );
 
   const handleWhatsApp = () => {
     if (!user) {
@@ -331,26 +415,40 @@ export default function ListingDetailScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-        {/* Image Gallery - Supports Cloudinary URLs */}
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={handleImageTap}
-          style={{ height: height * 0.4 }}
-        >
-          <Animated.Image
-            source={{ uri: listing.images[currentImageIndex] }}
-            style={{ width, height: height * 0.4, opacity: imageOpacity }}
-            resizeMode="cover"
+        {/* Image Gallery Carousel - Swipeable with Pagination Dots */}
+        <View style={{ height: height * 0.4 }}>
+          <FlatList
+            ref={flatListRef}
+            data={listing.images}
+            renderItem={renderImageItem}
+            keyExtractor={(item, index) => `image-${index}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            decelerationRate="fast"
+            snapToInterval={width}
+            snapToAlignment="center"
           />
 
-          {/* Image Progress Indicators */}
-          <View className="absolute top-3 left-4 right-4 flex-row">
+          {/* Pagination Dots at Bottom */}
+          <View className="absolute bottom-4 left-0 right-0 flex-row justify-center items-center">
             {listing.images.map((_, index) => (
               <View
                 key={index}
-                className={`flex-1 h-0.5 rounded-full mx-0.5 ${
-                  index === currentImageIndex ? "bg-white" : "bg-white/40"
-                }`}
+                style={{
+                  width: index === currentImageIndex ? 8 : 6,
+                  height: index === currentImageIndex ? 8 : 6,
+                  borderRadius: 4,
+                  backgroundColor: index === currentImageIndex ? '#FFFFFF' : '#FFFFFF60',
+                  marginHorizontal: 4,
+                  elevation: 2,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 2,
+                }}
               />
             ))}
           </View>
@@ -371,40 +469,6 @@ export default function ListingDetailScreen() {
               >
                 <ChevronLeft size={20} color="#000" />
               </TouchableOpacity>
-
-              <View className="flex-row">
-                <TouchableOpacity
-                  onPress={() => setIsLiked(!isLiked)}
-                  className="bg-white/95 w-10 h-10 rounded-full items-center justify-center mr-2"
-                  style={{
-                    shadowColor: "#000",
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    elevation: 3,
-                  }}
-                >
-                  <Heart
-                    size={18}
-                    color={isLiked ? "#FF385C" : "#000"}
-                    fill={isLiked ? "#FF385C" : "transparent"}
-                  />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleShare}
-                  className="bg-white/95 w-10 h-10 rounded-full items-center justify-center"
-                  style={{
-                    shadowColor: "#000",
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    elevation: 3,
-                  }}
-                >
-                  <Share2 size={18} color="#000" />
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
 
@@ -422,7 +486,7 @@ export default function ListingDetailScreen() {
           >
             <Maximize2 size={16} color="#000" />
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
 
         {/* Details Section */}
         <View className="bg-white px-5 pt-6">
@@ -874,18 +938,14 @@ export default function ListingDetailScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* Expanded Gallery Image Modal */}
+      {/* Expanded Gallery Image Modal with Carousel */}
       <Modal
         visible={expandedImageIndex !== null}
         transparent
         animationType="fade"
         onRequestClose={() => setExpandedImageIndex(null)}
       >
-        <TouchableOpacity 
-          activeOpacity={1} 
-          onPress={() => setExpandedImageIndex(null)}
-          className="flex-1 bg-brutal/95 items-center justify-center"
-        >
+        <View className="flex-1 bg-brutal/95">
           {/* Close Button */}
           <TouchableOpacity
             onPress={() => setExpandedImageIndex(null)}
@@ -912,59 +972,50 @@ export default function ListingDetailScreen() {
             </View>
           </View>
 
-          {/* Left Arrow */}
-          {expandedImageIndex !== null && expandedImageIndex > 0 && (
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                setExpandedImageIndex(expandedImageIndex - 1);
-              }}
-              activeOpacity={0.8}
-              className="absolute left-4 bg-cosmic w-12 h-12 rounded-full items-center justify-center border-2 border-brutal"
-              style={{
-                zIndex: 100,
-                elevation: 100,
-                shadowColor: "#1A1A1A",
-                shadowOffset: { width: 2, height: 2 },
-                shadowOpacity: 1,
-                shadowRadius: 0,
-              }}
-            >
-              <ChevronLeft size={28} color="#1A1A1A" />
-            </TouchableOpacity>
-          )}
-
-          {/* Right Arrow */}
-          {expandedImageIndex !== null && expandedImageIndex < listing.images.length - 1 && (
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                setExpandedImageIndex(expandedImageIndex + 1);
-              }}
-              activeOpacity={0.8}
-              className="absolute right-4 bg-cosmic w-12 h-12 rounded-full items-center justify-center border-2 border-brutal"
-              style={{
-                shadowColor: "#1A1A1A",
-                shadowOffset: { width: 2, height: 2 },
-                shadowOpacity: 1,
-                shadowRadius: 0,
-              }}
-            >
-              <ChevronRight size={28} color="#1A1A1A" />
-            </TouchableOpacity>
-          )}
-          
-          {expandedImageIndex !== null && (
-            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-              <Image
-                source={{ uri: listing.images[expandedImageIndex] }}
-                style={{ width: width - 32, height: height * 0.7 }}
-                resizeMode="contain"
-                className="rounded-xl border-4 border-cosmic"
+          {/* Swipeable Image Carousel */}
+          <View className="flex-1 justify-center">
+            {expandedImageIndex !== null && (
+              <FlatList
+                ref={expandedFlatListRef}
+                data={listing.images}
+                renderItem={renderExpandedImageItem}
+                keyExtractor={(item, index) => `expanded-${index}`}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={handleExpandedScroll}
+                scrollEventThrottle={16}
+                decelerationRate="fast"
+                snapToInterval={width}
+                snapToAlignment="center"
+                initialScrollIndex={expandedImageIndex}
+                getItemLayout={(data, index) => ({
+                  length: width,
+                  offset: width * index,
+                  index,
+                })}
               />
-            </TouchableOpacity>
-          )}
-        </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Pagination Dots */}
+          <View className="absolute bottom-8 left-0 right-0 flex-row justify-center items-center">
+            {listing.images.map((_, index) => (
+              <View
+                key={index}
+                style={{
+                  width: index === expandedImageIndex ? 10 : 8,
+                  height: index === expandedImageIndex ? 10 : 8,
+                  borderRadius: 5,
+                  backgroundColor: index === expandedImageIndex ? '#FFFFFF' : '#FFFFFF60',
+                  marginHorizontal: 4,
+                  borderWidth: 2,
+                  borderColor: '#1A1A1A',
+                }}
+              />
+            ))}
+          </View>
+        </View>
       </Modal>
 
       {/* Expanded Review Image Modal */}
