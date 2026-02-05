@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "scheme": "campuscrib",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -18,6 +17,11 @@
       "bundleIdentifier": "com.campuscrib.app",
       "config": {
         "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "The app needs access to your camera to let you capture your property.",
+        "NSPhotoLibraryUsageDescription": "The app needs access to your photos to let you upload property images.",
+        "NSMicrophoneUsageDescription": "Allow CampusCrib to access your microphone for video."
       }
     },
     "android": {
@@ -26,6 +30,13 @@
         "backgroundColor": "#FFF8E7"
       },
       "package": "com.campuscrib.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
+      ],
       "config": {
         "googleMaps": {
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
@@ -40,10 +51,32 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to let you upload property images.",
+          "cameraPermission": "The app needs access to your camera to let you capture your property.",
+          "microphonePermission": "Allow CampusCrib to access your microphone."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3c74e07e-c19b-4d92-8601-565c0a2e1eea"
+      }
     }
   }
 }
